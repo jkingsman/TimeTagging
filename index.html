@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+
+<head>
+  <title>Time Tagging</title>
+</head>
+<style id="stylesheet">
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    height: 80%;
+  }
+
+  .clearfix {
+    overflow: auto;
+    zoom: 1;
+  }
+
+  .container {
+    height: 100%;
+  }
+
+  .attribution {
+    font-style: oblique;
+    color: rgba(0, 0, 0, 0.33);
+  }
+
+  #dataContainer {
+    float: left;
+    margin-right: 25px;
+    width: 50%;
+    height: 100%;
+    overflow-y: scroll;
+    /* show vertical scroll only */
+    overflow-x: hidden;
+    border-right: thick double;
+  }
+
+  #dataTable {
+    width: 100%;
+  }
+
+  #entry {
+    text-align: center;
+  }
+
+  #addTimeEntry {
+    height: 80px;
+    font-size: xx-large;
+  }
+
+  #rawDataContainer {
+    display: none;
+  }
+
+  td {
+    text-align: center;
+  }
+</style>
+
+<script>
+  // set defaults
+  var delta = false;
+  var headers = false;
+  var startTime = new Date().getTime();
+  var lastEntryTime = new Date().getTime();
+  var entryNumber = 1;
+
+  // start by calling our display handlers to sync things up once the page is ready
+  document.addEventListener("DOMContentLoaded", function(event) {
+    showHideDelta();
+
+    // disable download button with no data
+    document.getElementById("downloadButton").disabled = true;
+
+    // make sure we're in an appropriate browser
+    var isFirefox = typeof InstallTrigger !== 'undefined'; // Firefox 1.0+
+    var isChrome = !!window.chrome;
+    if (!isFirefox && !isChrome) {
+      alert("Warning! Downloading data may not be compatible with your browser -- please use Firefox or Chrome.");
+    }
+  });
+
+  function showHideDelta() {
+    delta = document.querySelector('#delta:checked') !== null ? true : false;
+    var deltaElements = document.getElementsByClassName("delta");
+
+    // apply the style
+    for (var i = 0; i < deltaElements.length; i++) {
+      if (delta) {
+        deltaElements[i].style.display = "table-cell";
+      } else {
+        deltaElements[i].style.display = "none";
+      }
+    }
+
+    // focus the add entry button so spaces don't keep toggling
+    document.getElementById("addTimeEntry").focus();
+  }
+
+  function showHideHeaders() {
+    headers = document.querySelector('#headers:checked') !== null ? true : false;
+
+    // focus the add entry button so spaces don't keep toggling
+    document.getElementById("addTimeEntry").focus();
+  }
+
+  function clearTable() {
+    if (confirm("This will remove all data and reset the clock! Are you sure you want to do this?")) {
+      var dataTableBody = document.getElementById("dataTableBody");
+      while (dataTableBody.rows.length > 0) {
+        dataTableBody.deleteRow(0);
+      }
+
+      // reset the clock
+      startTime = new Date().getTime();
+      lastEntryTime = new Date().getTime();
+      entryNumber = 1;
+
+      // no more data; disable the download button
+      document.getElementById("downloadButton").disabled = true;
+
+      /**
+       * focus the addTime buddon so the reset button isn't selected after
+       * the click (otherwise space strikes will keep clearing the table
+       */
+      document.getElementById("addTimeEntry").focus();
+    }
+  }
+
+  function addTimeEntry() {
+    var dataTableBody = document.getElementById("dataTableBody");
+    // insert at row.length AKA end of the table
+    var dataRow = dataTableBody.insertRow(dataTableBody.rows.length);
+
+    var index = dataRow.insertCell(0);
+    var time = dataRow.insertCell(1);
+    var seconds = dataRow.insertCell(2);
+    var delta = dataRow.insertCell(3);
+
+    // set entry number and increment the index
+    index.innerHTML = entryNumber;
+    entryNumber++;
+
+    // set current time in HH:MM:SS *M format
+    var date = new Date();
+    time.innerHTML = ('0' + date.getHours()).slice(-2) + ":" + ('0' + date.getMinutes()).slice(-2) + ":" + ('0' + date.getSeconds()).slice(-2);
+
+    // get the seconds elapsed since we started
+    // getTime is in ms, so divide by 1000 to get seconds.millis
+    seconds.innerHTML = (new Date().getTime() - startTime) / 1000;
+
+    // set our delta since last time and set the last time to now
+    delta.innerHTML = (new Date().getTime() - lastEntryTime) / 1000;
+    lastEntryTime = new Date().getTime();
+    delta.className = "delta";
+
+    // we have data; enable the download button
+    document.getElementById("downloadButton").disabled = false;
+
+    // call our delta function to show or hide the delta row we just added
+    showHideDelta();
+
+    // scroll to the bottom of the table container to show what we just entered
+    document.getElementById("dataContainer").scrollTop = document.getElementById("dataContainer").scrollHeight;
+  }
+
+  function download() {
+    // populate the raw data
+    populateRawData();
+
+    /**
+     * load the data into our hidden link - GO HTML5!
+     * the encodeURIComponent stuff is to force our line breaks to be in a
+     * format that survives URI encoding -- http://stackoverflow.com/questions/332872/encode-url-in-javascript
+     */
+    var hiddenLink = document.getElementById("hiddenDownloadLink");
+    hiddenLink.href = 'data:attachment/csv,' + encodeURIComponent(document.getElementById("rawDataContainer").innerHTML);
+    hiddenLink.target = '_blank';
+
+    // set a nice timestamp
+    var date = new Date();
+    var prettyDate = ('0' + (date.getMonth() + 1)).slice(-2) + '-' +
+      ('0' + date.getDate()).slice(-2) + ',' +
+      ('0' + date.getHours()).slice(-2) +
+      ('0' + date.getMinutes()).slice(-2);
+
+    // add our settings to the filename
+    var settings = '';
+    if(delta){
+      settings += '-withDelta';
+    }
+
+    if(headers){
+      settings += '-withHeaders';
+    }
+
+    // roll the name up
+    var linkName = 'TimeTagging' + prettyDate + settings + '.csv';
+    hiddenLink.download = linkName;
+
+    // simulate a click event to trigger the download
+    hiddenLink.click();
+  }
+
+  function populateRawData() {
+    var dataTable = document.getElementById("dataTable");
+    var rawData = document.getElementById("rawDataContainer");
+
+    // clear out any stale data
+    rawData.innerHTML = "";
+
+    for (var i = 0, row; row = dataTable.rows[i]; i++) {
+      if ((i === 0 && headers) || i > 0) {
+        // only collect the row if it's the first row and we want headers, or it's not the first row
+
+        // iterate through row's columns
+        var rowArray = [];
+        for (var j = 0, col; col = row.cells[j]; j++) {
+          // push each column of the row into our array
+          rowArray.push(col.innerHTML);
+        }
+
+        // pop out the delta element if we don't want it
+        if (!delta) {
+          rowArray.pop();
+        }
+
+        // close each line by joining the array with commas and adding a newline
+        rawData.innerHTML += rowArray.join(",");
+        rawData.innerHTML += "\r\n";
+      }
+    }
+  }
+
+  // listen for spacebar
+  window.onkeyup = function(e) {
+    // capture keystrike
+    var key = e.keyCode ? e.keyCode : e.which;
+
+    /**
+     * if it's spacebar, add a time entry. BUT! if the addTime button is
+     * selected, don't fire - let the keyboard listener handle it so we
+     * don't get a dup entry
+     */
+    if (key == 32 && document.getElementById("addTimeEntry") !== document.activeElement) {
+      addTimeEntry();
+    }
+  };
+</script>
+
+<body>
+  <div class="container">
+    <h1>Time Tagging</h1>
+    <span class="attribution">
+      &copy; Jack Kingsman 2015 -- MIT Licensed
+      <br /> This page requires the HTML5 download attribute, and is thus currently only Chrome (recommended) and Firefox.
+    </span>
+    <hr> These options can be changed before, during, and after data collection - redownloading the file will create a new file with desired options, using the current data.
+    <br />
+    <label>
+      <input type="checkbox" id="delta" value="delta" onchange="showHideDelta();"> Include the delta betwen times in the table in the exported file</label>
+    <br>
+    <label>
+      <input type="checkbox" id="headers" value="headers" onchange="showHideHeaders();"> Include a row of headers on the exported file</label>
+    <br>
+    <br>
+    <button id="resetTableButton" onclick="clearTable();">Clear the table of all data and reset clock</button>
+    <button id="downloadButton" onclick="download();">Download all data</button>
+    <hr>
+    <div id="dataContainer">
+      <table id="dataTable">
+        <thead>
+          <tr>
+            <th>Entry</th>
+            <th>Time</th>
+            <th>Seconds</th>
+            <th class="delta">Delta</th>
+          </tr>
+        </thead>
+        <tbody id="dataTableBody">
+        </tbody>
+      </table>
+    </div>
+    <div id="entry">
+      <button id="addTimeEntry" onclick="addTimeEntry();">Add Time Entry</button>
+      <br> (or strike the spacebar anywhere on the page)
+    </div>
+  </div>
+
+  <div id="rawDataContainer"></div>
+  <a href="" id="hiddenDownloadLink" download=""></a>
+</body>
+
+</html>
